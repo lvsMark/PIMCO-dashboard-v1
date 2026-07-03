@@ -123,6 +123,9 @@
     letter-spacing:.3px;
   }
   tbody tr:hover{background:#f8fafc;}
+  td.cell-up{background:#e6f4ea;color:#1b6b32;}
+  td.cell-down{background:#fbe9e7;color:#a52714;}
+  .trend-arrow{font-size:9px;margin-left:3px;position:relative;top:-1px;}
   .table-scroll{overflow-x:auto;}
   .legend-note{font-size:11.5px;color:var(--muted);margin-top:10px;}
   .toggle-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
@@ -175,6 +178,9 @@
   .chart-legend{display:flex;flex-wrap:wrap;gap:16px 20px;margin-top:16px;font-size:12px;color:var(--text);}
   .chart-legend .item{display:flex;align-items:center;gap:6px;}
   .chart-legend .swatch{width:12px;height:12px;border-radius:3px;display:inline-block;flex-shrink:0;}
+  .chart-legend .item.legend-toggle{cursor:pointer;user-select:none;}
+  .chart-legend .item.legend-toggle:hover .label{color:var(--navy);}
+  .chart-legend .item.hidden .label{text-decoration:line-through;color:#94a3b8;}
 </style>
 </head>
 <body>
@@ -226,14 +232,23 @@
 
   <!-- CREDIT QUALITY -->
   <section>
-    <h2>3. Credit Quality Breakdown <span class="tag">% MV</span></h2>
-    <p class="desc">Share of portfolio market value by rating bucket. "B or Below" aggregates B, Below B and short-term A1/P1-equivalent slivers as reported in each factsheet's quality pie chart.</p>
-    <div class="chart-box"><canvas id="qualityStackChart"></canvas></div>
+    <div class="card-head">
+      <div class="titles">
+        <h2>Credit Quality Breakdown</h2>
+        <p class="desc">% of Market Value by rating bucket. "B or Below" aggregates B, Below B and short-term A1/P1-equivalent slivers as reported in each factsheet's quality pie chart.</p>
+      </div>
+      <div class="pill-group" id="qualityModeToggle">
+        <button data-mode="composition" class="active">Composition</button>
+        <button data-mode="lines">Lines</button>
+      </div>
+    </div>
+    <div class="chart-box" style="height:460px;"><canvas id="qualityChart"></canvas></div>
+    <div class="chart-legend" id="qualityLegend"></div>
+    <p class="legend-note">Average quality has been reported as <span class="badge-quality">AA-</span> in every month covered. Morningstar rating ranged 4★–5★ over the period.</p>
     <button class="collapse-toggle" id="qualityTableToggle"><span class="arrow">&#9654;</span> Show data table</button>
     <div class="table-scroll collapsed" id="qualityTableWrap">
       <table id="qualityTable"></table>
     </div>
-    <p class="legend-note">Average quality has been reported as <span class="badge-quality">AA-</span> in every month covered. Morningstar rating ranged 4★–5★ over the period.</p>
   </section>
 
 </div>
@@ -343,8 +358,40 @@ const methodologyLinePlugin = {
   }
 };
 
+// builds a <td> whose background/arrow reflects the month-over-month change
+// (curr/prev are raw numbers; formatted is the display string). First column has no prior.
+function trendCell(curr, prev, formatted){
+  if(prev===undefined || prev===null || isNaN(prev) || isNaN(curr)) return `<td>${formatted}</td>`;
+  if(curr > prev) return `<td class="cell-up">${formatted}<span class="trend-arrow">&#9650;</span></td>`;
+  if(curr < prev) return `<td class="cell-down">${formatted}<span class="trend-arrow">&#9660;</span></td>`;
+  return `<td>${formatted}</td>`;
+}
+function trendRow(values, formatFn){
+  return values.map((v,i)=> trendCell(v, i>0?values[i-1]:undefined, formatFn(v))).join('');
+}
+
+// generic clickable legend that toggles a Chart.js dataset's visibility
+// (hiddenSet holds the *names* currently hidden; refresh() rebuilds chart + legend)
+function makeLegendToggle(elId, names, colorMap, hiddenSet, refresh){
+  const el = document.getElementById(elId);
+  el.innerHTML = names.map((name,i)=>
+    `<span class="item legend-toggle${hiddenSet.has(name)?' hidden':''}" data-idx="${i}">`+
+    `<span class="swatch" style="background:${colorMap[name]}"></span>`+
+    `<span class="label">${name}</span></span>`
+  ).join('');
+  el.querySelectorAll('.legend-toggle').forEach(item=>{
+    item.addEventListener('click', ()=>{
+      const idx = parseInt(item.dataset.idx,10);
+      const name = names[idx];
+      if(hiddenSet.has(name)) hiddenSet.delete(name); else hiddenSet.add(name);
+      refresh();
+    });
+  });
+}
+
 let allocChartInstance;
 let allocMode = 'composition';
+let allocHidden = new Set();
 
 function buildAllocDatasets(mode){
   return allocGroupNames.map(name=>({
@@ -357,7 +404,8 @@ function buildAllocDatasets(mode){
     pointRadius:0,
     pointHoverRadius:4,
     pointHitRadius:8,
-    fill: mode==='composition' ? true : false
+    fill: mode==='composition' ? true : false,
+    hidden: allocHidden.has(name)
   }));
 }
 
@@ -395,23 +443,21 @@ function renderAllocChart(){
   if(allocChartInstance) allocChartInstance.destroy();
   allocChartInstance = new Chart(ctx, config);
 }
-renderAllocChart();
+
+function refreshAlloc(){
+  renderAllocChart();
+  makeLegendToggle('allocLegend', allocGroupNames, ALLOC_COLORS, allocHidden, refreshAlloc);
+}
+refreshAlloc();
 
 document.querySelectorAll('#allocModeToggle button').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('#allocModeToggle button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     allocMode = btn.dataset.mode;
-    renderAllocChart();
+    refreshAlloc();
   });
 });
-
-(function buildAllocLegend(){
-  const el = document.getElementById('allocLegend');
-  el.innerHTML = allocGroupNames.map(name=>
-    `<span class="item"><span class="swatch" style="background:${ALLOC_COLORS[name]}"></span>${name}</span>`
-  ).join('');
-})();
 
 document.getElementById('allocTableToggle').addEventListener('click', function(){
   const wrap = document.getElementById('allocTableWrap');
@@ -427,7 +473,7 @@ document.getElementById('allocTableToggle').addEventListener('click', function()
   let thead = '<thead><tr><th>Sector</th>' + allocLabelsShort.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
   let tbody = '<tbody>';
   allocGroupNames.forEach(name=>{
-    tbody += `<tr><td>${name}</td>` + ALLOC_GROUPS[name].map(v=>`<td>${v}%</td>`).join('') + '</tr>';
+    tbody += `<tr><td>${name}</td>` + trendRow(ALLOC_GROUPS[name], v=>v+'%') + '</tr>';
   });
   tbody += '</tbody>';
   tbl.innerHTML = thead+tbody;
@@ -442,88 +488,101 @@ const STATS_COLORS = {
 };
 const ytdBarColors = DATA.stats.ytdReturn.map(v=> v<0 ? STATS_COLORS.ytdNeg : STATS_COLORS.ytdPos);
 
-new Chart(document.getElementById('statsChart'), {
-  data:{
-    labels:allocLabelsShort,
-    datasets:[
-      {
-        type:'bar',
-        label:'YTD Return (%)',
-        data:DATA.stats.ytdReturn,
-        backgroundColor:ytdBarColors,
-        yAxisID:'y1',
-        order:2,
-        borderRadius:2,
-        barPercentage:0.55
+const STATS_NAMES = ['Effective Duration (yrs)','Estimated YTM (%)','YTD Return (%)'];
+const STATS_LEGEND_COLORS = {
+  'Effective Duration (yrs)': STATS_COLORS.duration,
+  'Estimated YTM (%)': STATS_COLORS.ytm,
+  'YTD Return (%)': STATS_COLORS.ytdPos
+};
+let statsHidden = new Set();
+let statsChartInstance;
+
+function renderStatsChart(){
+  const config = {
+    data:{
+      labels:allocLabelsShort,
+      datasets:[
+        {
+          type:'bar',
+          label:'YTD Return (%)',
+          data:DATA.stats.ytdReturn,
+          backgroundColor:ytdBarColors,
+          yAxisID:'y1',
+          order:2,
+          borderRadius:2,
+          barPercentage:0.55,
+          hidden: statsHidden.has('YTD Return (%)')
+        },
+        {
+          type:'line',
+          label:'Effective Duration (yrs)',
+          data:DATA.stats.duration,
+          borderColor:STATS_COLORS.duration,
+          backgroundColor:STATS_COLORS.duration,
+          yAxisID:'y',
+          tension:.35,
+          borderWidth:2.5,
+          pointRadius:4,
+          pointBackgroundColor:STATS_COLORS.duration,
+          fill:false,
+          order:0,
+          hidden: statsHidden.has('Effective Duration (yrs)')
+        },
+        {
+          type:'line',
+          label:'Estimated YTM (%)',
+          data:DATA.stats.ytm,
+          borderColor:STATS_COLORS.ytm,
+          backgroundColor:STATS_COLORS.ytm,
+          yAxisID:'y',
+          tension:.35,
+          borderWidth:2.5,
+          pointRadius:4,
+          pointBackgroundColor:STATS_COLORS.ytm,
+          fill:false,
+          order:1,
+          hidden: statsHidden.has('Estimated YTM (%)')
+        }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{
+          backgroundColor:'rgba(15,23,42,.94)',
+          titleColor:'#fff', bodyColor:'#e2e8f0',
+          padding:10, cornerRadius:8, boxPadding:4,
+          callbacks:{ label: c => `${c.dataset.label}: ${c.parsed.y}${c.dataset.label.indexOf('%')>-1?'%':''}` }
+        }
       },
-      {
-        type:'line',
-        label:'Effective Duration (yrs)',
-        data:DATA.stats.duration,
-        borderColor:STATS_COLORS.duration,
-        backgroundColor:STATS_COLORS.duration,
-        yAxisID:'y',
-        tension:.35,
-        borderWidth:2.5,
-        pointRadius:4,
-        pointBackgroundColor:STATS_COLORS.duration,
-        fill:false,
-        order:0
-      },
-      {
-        type:'line',
-        label:'Estimated YTM (%)',
-        data:DATA.stats.ytm,
-        borderColor:STATS_COLORS.ytm,
-        backgroundColor:STATS_COLORS.ytm,
-        yAxisID:'y',
-        tension:.35,
-        borderWidth:2.5,
-        pointRadius:4,
-        pointBackgroundColor:STATS_COLORS.ytm,
-        fill:false,
-        order:1
-      }
-    ]
-  },
-  options:{
-    responsive:true, maintainAspectRatio:false,
-    interaction:{ mode:'index', intersect:false },
-    plugins:{
-      legend:{ display:false },
-      tooltip:{
-        backgroundColor:'rgba(15,23,42,.94)',
-        titleColor:'#fff', bodyColor:'#e2e8f0',
-        padding:10, cornerRadius:8, boxPadding:4,
-        callbacks:{ label: c => `${c.dataset.label}: ${c.parsed.y}${c.dataset.label.indexOf('%')>-1?'%':''}` }
+      scales:{
+        x:{ ticks:{ maxRotation:0, autoSkip:true } },
+        y:{
+          position:'left',
+          title:{ display:true, text:'Years / YTM %' },
+          suggestedMin:3.5
+        },
+        y1:{
+          position:'right',
+          title:{ display:true, text:'YTD Return %' },
+          grid:{ drawOnChartArea:false },
+          suggestedMin:-2
+        }
       }
     },
-    scales:{
-      x:{ ticks:{ maxRotation:0, autoSkip:true } },
-      y:{
-        position:'left',
-        title:{ display:true, text:'Years / YTM %' },
-        suggestedMin:3.5
-      },
-      y1:{
-        position:'right',
-        title:{ display:true, text:'YTD Return %' },
-        grid:{ drawOnChartArea:false },
-        suggestedMin:-2
-      }
-    }
-  },
-  plugins:[methodologyLinePlugin]
-});
+    plugins:[methodologyLinePlugin]
+  };
+  if(statsChartInstance) statsChartInstance.destroy();
+  statsChartInstance = new Chart(document.getElementById('statsChart'), config);
+}
 
-(function buildStatsLegend(){
-  const el = document.getElementById('statsLegend');
-  el.innerHTML = `
-    <span class="item"><span class="swatch" style="background:${STATS_COLORS.duration}"></span>Effective Duration (yrs)</span>
-    <span class="item"><span class="swatch" style="background:${STATS_COLORS.ytm}"></span>Estimated YTM (%)</span>
-    <span class="item"><span class="swatch" style="background:${STATS_COLORS.ytdPos}"></span>YTD Return (%)</span>
-  `;
-})();
+function refreshStats(){
+  renderStatsChart();
+  makeLegendToggle('statsLegend', STATS_NAMES, STATS_LEGEND_COLORS, statsHidden, refreshStats);
+}
+refreshStats();
 
 document.getElementById('statsTableToggle').addEventListener('click', function(){
   const wrap = document.getElementById('statsTableWrap');
@@ -536,44 +595,102 @@ document.getElementById('statsTableToggle').addEventListener('click', function()
 (function buildStatsTable(){
   const tbl = document.getElementById('statsTable');
   let thead = '<thead><tr><th>Metric</th>' + allocLabelsShort.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
-  let rows = [
-    ['Effective Duration (yrs)', DATA.stats.duration.map(v=>v.toFixed(2))],
-    ['Estimated YTM (%)', DATA.stats.ytm.map(v=>v.toFixed(2)+'%')],
-    ['Estimated YTD Return (%)', DATA.stats.ytdReturn.map(v=>v.toFixed(2)+'%')],
-    ['Average Quality', DATA.stats.avgQuality],
-    ['Morningstar Rating', DATA.stats.morningstar.map(v=>'★'.repeat(v))]
-  ];
-  let tbody = '<tbody>' + rows.map(r=>`<tr><td>${r[0]}</td>${r[1].map(v=>`<td>${v}</td>`).join('')}</tr>`).join('') + '</tbody>';
+  let tbody = '<tbody>';
+  tbody += `<tr><td>Effective Duration (yrs)</td>` + trendRow(DATA.stats.duration, v=>v.toFixed(2)) + '</tr>';
+  tbody += `<tr><td>Estimated YTM (%)</td>` + trendRow(DATA.stats.ytm, v=>v.toFixed(2)+'%') + '</tr>';
+  tbody += `<tr><td>Estimated YTD Return (%)</td>` + trendRow(DATA.stats.ytdReturn, v=>v.toFixed(2)+'%') + '</tr>';
+  tbody += `<tr><td>Average Quality</td>` + DATA.stats.avgQuality.map(v=>`<td>${v}</td>`).join('') + '</tr>';
+  tbody += `<tr><td>Morningstar Rating</td>` + trendRow(DATA.stats.morningstar, v=>'★'.repeat(v)) + '</tr>';
+  tbody += '</tbody>';
   tbl.innerHTML = thead+tbody;
 })();
 
 // ---------- Section 3: Credit Quality ----------
 const qCats = ["AAA","AA","A","BBB","BB","BorBelow"];
 const qLabelMap = {AAA:"AAA",AA:"AA",A:"A",BBB:"BBB",BB:"BB",BorBelow:"B or Below"};
-new Chart(document.getElementById('qualityStackChart'),{
-  type:'bar',
-  data:{
-    labels:DATA.labels,
-    datasets:qCats.map(c=>({
-      label:qLabelMap[c], data:DATA.credit[c], backgroundColor:QCOLORS[c], stack:'q'
-    }))
-  },
-  options:{
-    responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{position:'top',labels:{boxWidth:12,font:{size:11}}}},
-    scales:{
-      x:{stacked:true,ticks:{maxRotation:0}},
-      y:{stacked:true,suggestedMax:100,title:{display:true,text:'% of Market Value'}}
-    }
-  }
+const qualityNames = qCats.map(c=>qLabelMap[c]);
+const QUALITY_COLORS = {};
+qCats.forEach(c=> QUALITY_COLORS[qLabelMap[c]] = QCOLORS[c]);
+
+let qualityChartInstance;
+let qualityMode = 'composition';
+let qualityHidden = new Set();
+
+function buildQualityDatasets(mode){
+  return qCats.map(c=>{
+    const name = qLabelMap[c];
+    return {
+      label:name,
+      data:DATA.credit[c],
+      borderColor:QCOLORS[c],
+      backgroundColor: mode==='composition' ? QCOLORS[c] : QCOLORS[c]+'26',
+      tension:.4,
+      borderWidth:2,
+      pointRadius:0,
+      pointHoverRadius:4,
+      pointHitRadius:8,
+      fill: mode==='composition' ? true : false,
+      hidden: qualityHidden.has(name)
+    };
+  });
+}
+
+function renderQualityChart(){
+  const ctx = document.getElementById('qualityChart');
+  const datasets = buildQualityDatasets(qualityMode);
+  const config = {
+    type:'line',
+    data:{ labels:allocLabelsShort, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{
+          backgroundColor:'rgba(15,23,42,.94)',
+          titleColor:'#fff', bodyColor:'#e2e8f0',
+          padding:10, cornerRadius:8, boxPadding:4, usePointStyle:true,
+          callbacks:{ label: c => `${c.dataset.label}: ${c.parsed.y}%` }
+        }
+      },
+      scales:{
+        x:{ stacked: qualityMode==='composition', ticks:{ maxRotation:0, autoSkip:true } },
+        y:{
+          stacked: qualityMode==='composition',
+          min:0,
+          max: qualityMode==='composition' ? 100 : 70,
+          ticks:{ stepSize: qualityMode==='composition'?10:10, callback:v=>v+'%' },
+          title:{ display:true, text:'% of Market Value' }
+        }
+      }
+    },
+    plugins:[methodologyLinePlugin]
+  };
+  if(qualityChartInstance) qualityChartInstance.destroy();
+  qualityChartInstance = new Chart(ctx, config);
+}
+
+function refreshQuality(){
+  renderQualityChart();
+  makeLegendToggle('qualityLegend', qualityNames, QUALITY_COLORS, qualityHidden, refreshQuality);
+}
+refreshQuality();
+
+document.querySelectorAll('#qualityModeToggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#qualityModeToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    qualityMode = btn.dataset.mode;
+    refreshQuality();
+  });
 });
 
 (function buildQualityTable(){
   const tbl = document.getElementById('qualityTable');
-  let thead = '<thead><tr><th>Rating</th>' + DATA.labels.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
+  let thead = '<thead><tr><th>Rating</th>' + allocLabelsShort.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
   let tbody = '<tbody>';
   qCats.forEach(c=>{
-    tbody += `<tr><td>${qLabelMap[c]}</td>` + DATA.credit[c].map(v=>`<td>${v}%</td>`).join('') + '</tr>';
+    tbody += `<tr><td>${qLabelMap[c]}</td>` + trendRow(DATA.credit[c], v=>v+'%') + '</tr>';
   });
   tbody += '</tbody>';
   tbl.innerHTML = thead+tbody;
@@ -589,4 +706,3 @@ document.getElementById('qualityTableToggle').addEventListener('click', function
 </script>
 </body>
 </html>
-<!-- redeploy 1783046977 -->
