@@ -212,14 +212,14 @@
 
   <!-- KEY STATISTICS -->
   <section>
-    <h2>2. Key Statistics</h2>
-    <p class="desc">Effective duration, estimated YTM and YTD return, tracked monthly. Note: YTD return resets each January.</p>
-    <div class="grid-3">
-      <div><div class="chart-box small"><canvas id="durationChart"></canvas></div></div>
-      <div><div class="chart-box small"><canvas id="ytmChart"></canvas></div></div>
-      <div><div class="chart-box small"><canvas id="ytdChart"></canvas></div></div>
+    <div class="titles">
+      <h2>Key Statistics</h2>
+      <p class="desc">Effective duration &amp; Estimated Yield-to-Maturity (left axis), YTD return (right axis, resets each calendar year).</p>
     </div>
-    <div class="table-scroll">
+    <div class="chart-box" style="height:420px;"><canvas id="statsChart"></canvas></div>
+    <div class="chart-legend" id="statsLegend"></div>
+    <button class="collapse-toggle" id="statsTableToggle"><span class="arrow">&#9654;</span> Show data table</button>
+    <div class="table-scroll collapsed" id="statsTableWrap">
       <table id="statsTable"></table>
     </div>
   </section>
@@ -229,7 +229,8 @@
     <h2>3. Credit Quality Breakdown <span class="tag">% MV</span></h2>
     <p class="desc">Share of portfolio market value by rating bucket. "B or Below" aggregates B, Below B and short-term A1/P1-equivalent slivers as reported in each factsheet's quality pie chart.</p>
     <div class="chart-box"><canvas id="qualityStackChart"></canvas></div>
-    <div class="table-scroll">
+    <button class="collapse-toggle" id="qualityTableToggle"><span class="arrow">&#9654;</span> Show data table</button>
+    <div class="table-scroll collapsed" id="qualityTableWrap">
       <table id="qualityTable"></table>
     </div>
     <p class="legend-note">Average quality has been reported as <span class="badge-quality">AA-</span> in every month covered. Morningstar rating ranged 4★–5★ over the period.</p>
@@ -433,41 +434,108 @@ document.getElementById('allocTableToggle').addEventListener('click', function()
 })();
 
 // ---------- Section 2: Key Statistics ----------
-function lineChart(canvasId, label, dataArr, color, isPercent=true){
-  return new Chart(document.getElementById(canvasId),{
-    type:'line',
-    data:{labels:DATA.labels, datasets:[{
-      label, data:dataArr, borderColor:color, backgroundColor:color+'33',
-      tension:.25, borderWidth:2.5, pointRadius:3, fill:true
-    }]},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false}, title:{display:true,text:label,font:{size:13},color:'#0b2545'}},
-      scales:{
-        y:{ticks:{callback:v=>isPercent? v+'%':v}},
-        x:{ticks:{maxRotation:0,autoSkip:true}}
+const STATS_COLORS = {
+  duration:'#0b2545',
+  ytm:'#c9a227',
+  ytdPos:'#a9c6e8',
+  ytdNeg:'#d98880'
+};
+const ytdBarColors = DATA.stats.ytdReturn.map(v=> v<0 ? STATS_COLORS.ytdNeg : STATS_COLORS.ytdPos);
+
+new Chart(document.getElementById('statsChart'), {
+  data:{
+    labels:allocLabelsShort,
+    datasets:[
+      {
+        type:'bar',
+        label:'YTD Return (%)',
+        data:DATA.stats.ytdReturn,
+        backgroundColor:ytdBarColors,
+        yAxisID:'y1',
+        order:2,
+        borderRadius:2,
+        barPercentage:0.55
+      },
+      {
+        type:'line',
+        label:'Effective Duration (yrs)',
+        data:DATA.stats.duration,
+        borderColor:STATS_COLORS.duration,
+        backgroundColor:STATS_COLORS.duration,
+        yAxisID:'y',
+        tension:.35,
+        borderWidth:2.5,
+        pointRadius:4,
+        pointBackgroundColor:STATS_COLORS.duration,
+        fill:false,
+        order:0
+      },
+      {
+        type:'line',
+        label:'Estimated YTM (%)',
+        data:DATA.stats.ytm,
+        borderColor:STATS_COLORS.ytm,
+        backgroundColor:STATS_COLORS.ytm,
+        yAxisID:'y',
+        tension:.35,
+        borderWidth:2.5,
+        pointRadius:4,
+        pointBackgroundColor:STATS_COLORS.ytm,
+        fill:false,
+        order:1
+      }
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    interaction:{ mode:'index', intersect:false },
+    plugins:{
+      legend:{ display:false },
+      tooltip:{
+        backgroundColor:'rgba(15,23,42,.94)',
+        titleColor:'#fff', bodyColor:'#e2e8f0',
+        padding:10, cornerRadius:8, boxPadding:4,
+        callbacks:{ label: c => `${c.dataset.label}: ${c.parsed.y}${c.dataset.label.indexOf('%')>-1?'%':''}` }
+      }
+    },
+    scales:{
+      x:{ ticks:{ maxRotation:0, autoSkip:true } },
+      y:{
+        position:'left',
+        title:{ display:true, text:'Years / YTM %' },
+        suggestedMin:3.5
+      },
+      y1:{
+        position:'right',
+        title:{ display:true, text:'YTD Return %' },
+        grid:{ drawOnChartArea:false },
+        suggestedMin:-2
       }
     }
-  });
-}
-lineChart('durationChart','Effective Duration (yrs)',DATA.stats.duration,'#1a5fa8',false);
-lineChart('ytmChart','Estimated YTM (%)',DATA.stats.ytm,'#c9a227',true);
-const ytdColors = DATA.stats.ytdReturn.map(v=>v<0?'#b3261e':'#2e7d32');
-new Chart(document.getElementById('ytdChart'),{
-  type:'bar',
-  data:{labels:DATA.labels, datasets:[{
-    label:'YTD Return (%)', data:DATA.stats.ytdReturn, backgroundColor:ytdColors
-  }]},
-  options:{
-    responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:false}, title:{display:true,text:'Estimated YTD Return (%)',font:{size:13},color:'#0b2545'}},
-    scales:{ y:{ticks:{callback:v=>v+'%'}}, x:{ticks:{maxRotation:0}} }
-  }
+  },
+  plugins:[methodologyLinePlugin]
+});
+
+(function buildStatsLegend(){
+  const el = document.getElementById('statsLegend');
+  el.innerHTML = `
+    <span class="item"><span class="swatch" style="background:${STATS_COLORS.duration}"></span>Effective Duration (yrs)</span>
+    <span class="item"><span class="swatch" style="background:${STATS_COLORS.ytm}"></span>Estimated YTM (%)</span>
+    <span class="item"><span class="swatch" style="background:${STATS_COLORS.ytdPos}"></span>YTD Return (%)</span>
+  `;
+})();
+
+document.getElementById('statsTableToggle').addEventListener('click', function(){
+  const wrap = document.getElementById('statsTableWrap');
+  const nowCollapsed = wrap.classList.toggle('collapsed');
+  const isOpen = !nowCollapsed;
+  this.classList.toggle('open', isOpen);
+  this.innerHTML = `<span class="arrow">&#9654;</span> ${isOpen ? 'Hide data table' : 'Show data table'}`;
 });
 
 (function buildStatsTable(){
   const tbl = document.getElementById('statsTable');
-  let thead = '<thead><tr><th>Metric</th>' + DATA.labels.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
+  let thead = '<thead><tr><th>Metric</th>' + allocLabelsShort.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
   let rows = [
     ['Effective Duration (yrs)', DATA.stats.duration.map(v=>v.toFixed(2))],
     ['Estimated YTM (%)', DATA.stats.ytm.map(v=>v.toFixed(2)+'%')],
@@ -510,7 +578,14 @@ new Chart(document.getElementById('qualityStackChart'),{
   tbody += '</tbody>';
   tbl.innerHTML = thead+tbody;
 })();
+
+document.getElementById('qualityTableToggle').addEventListener('click', function(){
+  const wrap = document.getElementById('qualityTableWrap');
+  const nowCollapsed = wrap.classList.toggle('collapsed');
+  const isOpen = !nowCollapsed;
+  this.classList.toggle('open', isOpen);
+  this.innerHTML = `<span class="arrow">&#9654;</span> ${isOpen ? 'Hide data table' : 'Show data table'}`;
+});
 </script>
 </body>
 </html>
-<!-- redeploy 1783045567 -->
