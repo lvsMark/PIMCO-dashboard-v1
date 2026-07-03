@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PIMCO GIS Income Fund — Monthly Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --navy:#0b2545;
+    --blue:#1a5fa8;
+    --lightblue:#8ec6f0;
+    --accent:#c9a227;
+    --bg:#f4f6f9;
+    --card:#ffffff;
+    --text:#1c2733;
+    --muted:#64748b;
+    --border:#e2e8f0;
+    --green:#2e7d32;
+    --red:#b3261e;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  header{
+    background:linear-gradient(135deg,var(--navy),var(--blue));
+    color:#fff;
+    padding:28px 36px;
+  }
+  header h1{margin:0 0 4px 0;font-size:24px;font-weight:700;letter-spacing:.2px;}
+  header p{margin:0;font-size:13.5px;color:#cfe0f5;}
+  .wrap{max-width:1280px;margin:0 auto;padding:24px 28px 60px;}
+  .note{
+    background:#fff8e1;
+    border:1px solid #f0d98c;
+    color:#6b5a17;
+    padding:10px 16px;
+    border-radius:8px;
+    font-size:12.5px;
+    margin-bottom:22px;
+    line-height:1.5;
+  }
+  .kpi-row{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:14px;
+    margin-bottom:26px;
+  }
+  .kpi{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:16px 18px;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  .kpi .label{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;}
+  .kpi .value{font-size:26px;font-weight:700;color:var(--navy);margin-top:4px;}
+  .kpi .sub{font-size:12px;color:var(--muted);margin-top:2px;}
+  .kpi .delta{font-size:12px;font-weight:600;margin-top:6px;}
+  .delta.up{color:var(--green);}
+  .delta.down{color:var(--red);}
+  section{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:22px 24px 26px;
+    margin-bottom:24px;
+    box-shadow:0 1px 3px rgba(15,23,42,.05);
+  }
+  section h2{
+    font-size:17px;
+    margin:0 0 2px 0;
+    color:var(--navy);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  section h2 .tag{
+    font-size:10.5px;
+    background:var(--navy);
+    color:#fff;
+    padding:2px 8px;
+    border-radius:20px;
+    font-weight:600;
+    letter-spacing:.3px;
+  }
+  section .desc{font-size:12.5px;color:var(--muted);margin:2px 0 16px 0;}
+  .chart-box{position:relative;height:340px;margin-bottom:6px;}
+  .chart-box.small{height:280px;}
+  .grid-3{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:18px;
+    margin-bottom:10px;
+  }
+  .grid-2{
+    display:grid;
+    grid-template-columns:1.3fr 1fr;
+    gap:20px;
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12px;
+    margin-top:14px;
+  }
+  th,td{
+    padding:6px 8px;
+    text-align:right;
+    border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card);}
+  thead th{
+    background:#eef3f9;
+    color:var(--navy);
+    font-weight:700;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.3px;
+  }
+  tbody tr:hover{background:#f8fafc;}
+  .table-scroll{overflow-x:auto;}
+  .legend-note{font-size:11.5px;color:var(--muted);margin-top:10px;}
+  .toggle-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .toggle-row button{
+    border:1px solid var(--border);
+    background:#f1f5f9;
+    color:var(--text);
+    font-size:11.5px;
+    padding:5px 12px;
+    border-radius:16px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .toggle-row button.active{
+    background:var(--navy);
+    color:#fff;
+    border-color:var(--navy);
+  }
+  footer{
+    text-align:center;
+    color:var(--muted);
+    font-size:11.5px;
+    padding:20px;
+  }
+  .badge-quality{
+    display:inline-block;
+    background:#e8f0fb;
+    color:var(--blue);
+    font-weight:700;
+    border-radius:5px;
+    padding:1px 6px;
+    font-size:11px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>PIMCO GIS Income Fund — Monthly Positioning Tracker</h1>
+  <p>Institutional Acc share class · Source: monthly factsheets, Jan 2025 – May 2026 · Compiled from PDFs in Newsletter folder</p>
+</header>
+
+<div class="wrap">
+
+  <div class="note" id="dataNote"></div>
+
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <!-- ASSET ALLOCATION -->
+  <section>
+    <h2>1. Asset Allocation <span class="tag">% GMV</span></h2>
+    <p class="desc">How sector exposure has shifted month to month — cash, government-related and Agency MBS are highlighted since they anchor the Fund's liquidity and quality positioning.</p>
+    <div class="chart-box"><canvas id="allocLineChart"></canvas></div>
+    <div class="toggle-row" id="allocToggles"></div>
+    <div class="chart-box small"><canvas id="allocStackChart"></canvas></div>
+    <div class="table-scroll">
+      <table id="allocTable"></table>
+    </div>
+  </section>
+
+  <!-- KEY STATISTICS -->
+  <section>
+    <h2>2. Key Statistics</h2>
+    <p class="desc">Effective duration, estimated YTM and YTD return, tracked monthly. Note: YTD return resets each January.</p>
+    <div class="grid-3">
+      <div><div class="chart-box small"><canvas id="durationChart"></canvas></div></div>
+      <div><div class="chart-box small"><canvas id="ytmChart"></canvas></div></div>
+      <div><div class="chart-box small"><canvas id="ytdChart"></canvas></div></div>
+    </div>
+    <div class="table-scroll">
+      <table id="statsTable"></table>
+    </div>
+  </section>
+
+  <!-- CREDIT QUALITY -->
+  <section>
+    <h2>3. Credit Quality Breakdown <span class="tag">% MV</span></h2>
+    <p class="desc">Share of portfolio market value by rating bucket. "B or Below" aggregates B, Below B and short-term A1/P1-equivalent slivers as reported in each factsheet's quality pie chart.</p>
+    <div class="chart-box"><canvas id="qualityStackChart"></canvas></div>
+    <div class="table-scroll">
+      <table id="qualityTable"></table>
+    </div>
+    <p class="legend-note">Average quality has been reported as <span class="badge-quality">AA-</span> in every month covered. Morningstar rating ranged 4★–5★ over the period.</p>
+  </section>
+
+</div>
+
+<footer>Built from PIMCO GIS Income Fund monthly factsheets (Positioning page). GMV% / MV% figures as published by PIMCO; category groupings simplified for trend tracking. Not investment advice.</footer>
+
+<script>
+const DATA = {"months": ["2025-01", "2025-02", "2025-03", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"], "labels": ["Jan '25", "Feb '25", "Mar '25", "May '25", "Jun '25", "Jul '25", "Aug '25", "Sep '25", "Oct '25", "Nov '25", "Dec '25", "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26"], "allocation": {"Government Related": [17, 16, 16, 15, 15, 17, 14, 14, 14, 12, 13, 13, 13, 14, 14, 14], "Agency MBS": [35, 35, 34, 34, 34, 33, 35, 33, 36, 35, 36, 37, 36, 36, 36, 36], "Non-agency MBS": [5, 5, 5, 4, 4, 3, 3, 3, 4, 4, 4, 4, 3, 3, 3, 3], "ABS": [4, 4, 4, 4, 5, 4, 4, 4, 3, 3, 3, 3, 4, 3, 4, 4], "CMBS": [6, 6, 5, 6, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4], "Non US RMBS": [3, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3], "IG Credit": [15, 14, 15, 14, 14, 13, 12, 12, 12, 12, 12, 12, 12, 12, 14, 15], "Emerging Markets": [5, 5, 5, 6, 6, 6, 6, 5, 5, 6, 6, 6, 6, 6, 7, 7], "Bank Loan": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], "High Yield": [4, 4, 4, 5, 5, 5, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5], "Cash": [5, 7, 7, 9, 8, 9, 12, 15, 14, 17, 14, 11, 12, 12, 9, 7], "Other": [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "stats": {"duration": [4.61, 3.99, 3.96, 5.42, 5.13, 5.38, 5.25, 5.21, 4.98, 4.82, 4.9, 5.19, 5.15, 6.25, 6.29, 6.31], "ytm": [7.25, 6.98, 7.24, 6.9, 6.55, 6.51, 6.31, 6.25, 6.11, 6.07, 6.25, 6.29, 6.05, 6.9, 7.0, 6.83], "ytdReturn": [1.16, 3.04, 3.31, 3.26, 5.36, 5.41, 7.07, 8.01, 9.34, 10.17, 10.55, 0.6, 1.7, -0.75, 0.2, 0.9], "avgQuality": ["AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-", "AA-"], "morningstar": [4, 4, 4, 5, 5, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5]}, "credit": {"AAA": [64, 64, 64, 15, 15, 14, 17, 17, 15, 17, 19, 16, 16, 17, 14, 12], "AA": [8, 8, 8, 58, 57, 59, 59, 59, 61, 59, 57, 59, 58, 57, 58, 59], "A": [7, 7, 7, 6, 6, 6, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7], "BBB": [10, 9, 10, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 9, 10], "BB": [3, 3, 4, 4, 4, 4, 4, 4, 3, 3, 3, 5, 5, 5, 6, 6], "BorBelow": [8, 9, 7, 8, 9, 8, 6, 6, 7, 7, 7, 6, 7, 6, 6, 6]}, "note": "April 2025 newsletter was not available in the source folder, so it is omitted (gap between Mar '25 and May '25). All figures are as reported in each month's PIMCO GIS Income Fund factsheet: Asset Allocation (% GMV), Key Statistics box, and Quality Breakdown (%MV). 'B or Below' aggregates B, Below B, A1/P1 and Below A1/P1 slivers (100% minus AAA+AA+A+BBB+BB) as reported in the quality pie chart."};
+
+const COLORS = {
+  "Government Related":"#1a5fa8",
+  "Agency MBS":"#8ec6f0",
+  "Non-agency MBS":"#f5c9d6",
+  "ABS":"#5a8f3c",
+  "CMBS":"#2f5d34",
+  "Non US RMBS":"#c9a227",
+  "IG Credit":"#c7e0a4",
+  "Emerging Markets":"#e07a9e",
+  "Bank Loan":"#7b1f2b",
+  "High Yield":"#8b1e3f",
+  "Cash":"#0b2545",
+  "Other":"#94a3b8"
+};
+const QCOLORS = {
+  AAA:"#1a5fa8", AA:"#8ec6f0", A:"#7ba640", BBB:"#c9a227", BB:"#e07a9e", BorBelow:"#7b1f2b"
+};
+
+document.getElementById('dataNote').textContent = DATA.note;
+
+// ---------- KPI cards (latest month vs prior) ----------
+const n = DATA.labels.length;
+const last = n-1, prev = n-2;
+function fmtDelta(curr, prior, digits=2, suffix=''){
+  const d = curr - prior;
+  const sign = d>0?'+':'';
+  const cls = d>0?'up':(d<0?'down':'');
+  return {text:`${sign}${d.toFixed(digits)}${suffix} vs prior month`, cls};
+}
+const kpiRow = document.getElementById('kpiRow');
+const kpis = [
+  {label:'Effective Duration', value:DATA.stats.duration[last].toFixed(2)+' yrs', delta:fmtDelta(DATA.stats.duration[last],DATA.stats.duration[prev],2,' yrs')},
+  {label:'Estimated YTM', value:DATA.stats.ytm[last].toFixed(2)+'%', delta:fmtDelta(DATA.stats.ytm[last],DATA.stats.ytm[prev],2,' pts')},
+  {label:'YTD Return', value:DATA.stats.ytdReturn[last].toFixed(2)+'%', delta:fmtDelta(DATA.stats.ytdReturn[last],DATA.stats.ytdReturn[prev],2,' pts')},
+  {label:'Cash Allocation', value:DATA.allocation.Cash[last]+'%', delta:fmtDelta(DATA.allocation.Cash[last],DATA.allocation.Cash[prev],0,' pts')},
+];
+kpis.forEach(k=>{
+  const div = document.createElement('div');
+  div.className='kpi';
+  div.innerHTML = `<div class="label">${k.label} (${DATA.labels[last]})</div><div class="value">${k.value}</div><div class="delta ${k.delta.cls}">${k.delta.text}</div>`;
+  kpiRow.appendChild(div);
+});
+
+// ---------- Section 1: Asset Allocation ----------
+const allocCats = Object.keys(DATA.allocation);
+const highlightCats = ["Cash","Government Related","Agency MBS"];
+
+const allocLineCtx = document.getElementById('allocLineChart');
+const allocLineChart = new Chart(allocLineCtx, {
+  type:'line',
+  data:{
+    labels:DATA.labels,
+    datasets: highlightCats.map(cat=>({
+      label:cat,
+      data:DATA.allocation[cat],
+      borderColor:COLORS[cat],
+      backgroundColor:COLORS[cat],
+      tension:.25,
+      borderWidth:2.5,
+      pointRadius:3,
+      fill:false
+    }))
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{
+      legend:{position:'top',labels:{boxWidth:12,font:{size:11}}},
+      title:{display:true,text:'Cash, Government Related & Agency MBS trend (% GMV)',font:{size:12},color:'#64748b'}
+    },
+    scales:{
+      y:{title:{display:true,text:'% of GMV'},suggestedMin:0},
+      x:{ticks:{maxRotation:0,autoSkip:true}}
+    }
+  }
+});
+
+// toggle buttons for stacked chart (choose which cats to view, default: all)
+const allocToggles = document.getElementById('allocToggles');
+let activeCats = new Set(allocCats);
+function renderToggles(){
+  allocToggles.innerHTML='';
+  const allBtn = document.createElement('button');
+  allBtn.textContent = 'All sectors';
+  allBtn.className = activeCats.size===allocCats.length ? 'active':'';
+  allBtn.onclick = ()=>{activeCats = new Set(allocCats); renderToggles(); updateStack();};
+  allocToggles.appendChild(allBtn);
+  allocCats.forEach(cat=>{
+    const b = document.createElement('button');
+    b.textContent = cat;
+    b.className = activeCats.has(cat) && activeCats.size!==allocCats.length ? 'active':'';
+    b.onclick = ()=>{
+      if(activeCats.size===allocCats.length){ activeCats = new Set([cat]); }
+      else if(activeCats.has(cat)){ activeCats.delete(cat); if(activeCats.size===0) activeCats=new Set(allocCats); }
+      else { activeCats.add(cat); }
+      renderToggles(); updateStack();
+    };
+    allocToggles.appendChild(b);
+  });
+}
+renderToggles();
+
+let allocStackChart;
+function updateStack(){
+  const cats = allocCats.filter(c=>activeCats.has(c));
+  const datasets = cats.map(cat=>({
+    label:cat,
+    data:DATA.allocation[cat],
+    backgroundColor:COLORS[cat],
+    stack:'alloc'
+  }));
+  if(allocStackChart){
+    allocStackChart.data.datasets = datasets;
+    allocStackChart.update();
+  } else {
+    allocStackChart = new Chart(document.getElementById('allocStackChart'),{
+      type:'bar',
+      data:{labels:DATA.labels, datasets},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},
+          title:{display:true,text:'Full sector composition by month (% GMV)',font:{size:12},color:'#64748b'}},
+        scales:{
+          x:{stacked:true,ticks:{maxRotation:0}},
+          y:{stacked:true,suggestedMax:100,title:{display:true,text:'% of GMV'}}
+        }
+      }
+    });
+  }
+}
+updateStack();
+
+// Allocation table
+(function buildAllocTable(){
+  const tbl = document.getElementById('allocTable');
+  let thead = '<thead><tr><th>Sector</th>' + DATA.labels.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
+  let tbody = '<tbody>';
+  allocCats.forEach(cat=>{
+    tbody += `<tr><td>${cat}</td>` + DATA.allocation[cat].map(v=>`<td>${v}%</td>`).join('') + '</tr>';
+  });
+  tbody += '</tbody>';
+  tbl.innerHTML = thead+tbody;
+})();
+
+// ---------- Section 2: Key Statistics ----------
+function lineChart(canvasId, label, dataArr, color, isPercent=true){
+  return new Chart(document.getElementById(canvasId),{
+    type:'line',
+    data:{labels:DATA.labels, datasets:[{
+      label, data:dataArr, borderColor:color, backgroundColor:color+'33',
+      tension:.25, borderWidth:2.5, pointRadius:3, fill:true
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}, title:{display:true,text:label,font:{size:13},color:'#0b2545'}},
+      scales:{
+        y:{ticks:{callback:v=>isPercent? v+'%':v}},
+        x:{ticks:{maxRotation:0,autoSkip:true}}
+      }
+    }
+  });
+}
+lineChart('durationChart','Effective Duration (yrs)',DATA.stats.duration,'#1a5fa8',false);
+lineChart('ytmChart','Estimated YTM (%)',DATA.stats.ytm,'#c9a227',true);
+const ytdColors = DATA.stats.ytdReturn.map(v=>v<0?'#b3261e':'#2e7d32');
+new Chart(document.getElementById('ytdChart'),{
+  type:'bar',
+  data:{labels:DATA.labels, datasets:[{
+    label:'YTD Return (%)', data:DATA.stats.ytdReturn, backgroundColor:ytdColors
+  }]},
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}, title:{display:true,text:'Estimated YTD Return (%)',font:{size:13},color:'#0b2545'}},
+    scales:{ y:{ticks:{callback:v=>v+'%'}}, x:{ticks:{maxRotation:0}} }
+  }
+});
+
+(function buildStatsTable(){
+  const tbl = document.getElementById('statsTable');
+  let thead = '<thead><tr><th>Metric</th>' + DATA.labels.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
+  let rows = [
+    ['Effective Duration (yrs)', DATA.stats.duration.map(v=>v.toFixed(2))],
+    ['Estimated YTM (%)', DATA.stats.ytm.map(v=>v.toFixed(2)+'%')],
+    ['Estimated YTD Return (%)', DATA.stats.ytdReturn.map(v=>v.toFixed(2)+'%')],
+    ['Average Quality', DATA.stats.avgQuality],
+    ['Morningstar Rating', DATA.stats.morningstar.map(v=>'★'.repeat(v))]
+  ];
+  let tbody = '<tbody>' + rows.map(r=>`<tr><td>${r[0]}</td>${r[1].map(v=>`<td>${v}</td>`).join('')}</tr>`).join('') + '</tbody>';
+  tbl.innerHTML = thead+tbody;
+})();
+
+// ---------- Section 3: Credit Quality ----------
+const qCats = ["AAA","AA","A","BBB","BB","BorBelow"];
+const qLabelMap = {AAA:"AAA",AA:"AA",A:"A",BBB:"BBB",BB:"BB",BorBelow:"B or Below"};
+new Chart(document.getElementById('qualityStackChart'),{
+  type:'bar',
+  data:{
+    labels:DATA.labels,
+    datasets:qCats.map(c=>({
+      label:qLabelMap[c], data:DATA.credit[c], backgroundColor:QCOLORS[c], stack:'q'
+    }))
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{position:'top',labels:{boxWidth:12,font:{size:11}}}},
+    scales:{
+      x:{stacked:true,ticks:{maxRotation:0}},
+      y:{stacked:true,suggestedMax:100,title:{display:true,text:'% of Market Value'}}
+    }
+  }
+});
+
+(function buildQualityTable(){
+  const tbl = document.getElementById('qualityTable');
+  let thead = '<thead><tr><th>Rating</th>' + DATA.labels.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
+  let tbody = '<tbody>';
+  qCats.forEach(c=>{
+    tbody += `<tr><td>${qLabelMap[c]}</td>` + DATA.credit[c].map(v=>`<td>${v}%</td>`).join('') + '</tr>';
+  });
+  tbody += '</tbody>';
+  tbl.innerHTML = thead+tbody;
+})();
+</script>
+</body>
+</html>
