@@ -156,6 +156,25 @@
     padding:1px 6px;
     font-size:11px;
   }
+  .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
+  .card-head .titles h2{margin:0 0 4px 0;font-size:20px;}
+  .card-head .titles .desc{margin:0;}
+  .pill-group{display:flex;background:#eef1f5;border-radius:10px;padding:3px;gap:2px;flex-shrink:0;}
+  .pill-group button{
+    border:none;background:transparent;color:var(--muted);
+    font-size:12.5px;font-weight:700;padding:7px 16px;border-radius:8px;cursor:pointer;
+  }
+  .pill-group button.active{background:var(--navy);color:#fff;box-shadow:0 1px 3px rgba(11,37,69,.3);}
+  .collapse-toggle{
+    background:none;border:none;color:var(--blue);font-weight:700;font-size:12.5px;
+    cursor:pointer;padding:0;display:flex;align-items:center;gap:6px;margin-top:14px;
+  }
+  .collapse-toggle .arrow{transition:transform .15s ease;display:inline-block;font-size:10px;}
+  .collapse-toggle.open .arrow{transform:rotate(90deg);}
+  .table-scroll.collapsed{display:none;}
+  .chart-legend{display:flex;flex-wrap:wrap;gap:16px 20px;margin-top:16px;font-size:12px;color:var(--text);}
+  .chart-legend .item{display:flex;align-items:center;gap:6px;}
+  .chart-legend .swatch{width:12px;height:12px;border-radius:3px;display:inline-block;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -173,12 +192,20 @@
 
   <!-- ASSET ALLOCATION -->
   <section>
-    <h2>1. Asset Allocation <span class="tag">% GMV</span></h2>
-    <p class="desc">How sector exposure has shifted month to month — cash, government-related and Agency MBS are highlighted since they anchor the Fund's liquidity and quality positioning.</p>
-    <div class="chart-box"><canvas id="allocLineChart"></canvas></div>
-    <div class="toggle-row" id="allocToggles"></div>
-    <div class="chart-box small"><canvas id="allocStackChart"></canvas></div>
-    <div class="table-scroll">
+    <div class="card-head">
+      <div class="titles">
+        <h2>Asset Allocation</h2>
+        <p class="desc">% Gross Market Value. Watch Cash &amp; Liquidity (peaked ~17% in Nov-25) and the Agency MBS / Government Related core.</p>
+      </div>
+      <div class="pill-group" id="allocModeToggle">
+        <button data-mode="composition" class="active">Composition</button>
+        <button data-mode="lines">Lines</button>
+      </div>
+    </div>
+    <div class="chart-box" style="height:460px;"><canvas id="allocChart"></canvas></div>
+    <div class="chart-legend" id="allocLegend"></div>
+    <button class="collapse-toggle" id="allocTableToggle"><span class="arrow">&#9654;</span> Show data table</button>
+    <div class="table-scroll collapsed" id="allocTableWrap">
       <table id="allocTable"></table>
     </div>
   </section>
@@ -259,100 +286,147 @@ kpis.forEach(k=>{
 });
 
 // ---------- Section 1: Asset Allocation ----------
-const allocCats = Object.keys(DATA.allocation);
-const highlightCats = ["Cash","Government Related","Agency MBS"];
-
-const allocLineCtx = document.getElementById('allocLineChart');
-const allocLineChart = new Chart(allocLineCtx, {
-  type:'line',
-  data:{
-    labels:DATA.labels,
-    datasets: highlightCats.map(cat=>({
-      label:cat,
-      data:DATA.allocation[cat],
-      borderColor:COLORS[cat],
-      backgroundColor:COLORS[cat],
-      tension:.25,
-      borderWidth:2.5,
-      pointRadius:3,
-      fill:false
-    }))
-  },
-  options:{
-    responsive:true,maintainAspectRatio:false,
-    plugins:{
-      legend:{position:'top',labels:{boxWidth:12,font:{size:11}}},
-      title:{display:true,text:'Cash, Government Related & Agency MBS trend (% GMV)',font:{size:12},color:'#64748b'}
-    },
-    scales:{
-      y:{title:{display:true,text:'% of GMV'},suggestedMin:0},
-      x:{ticks:{maxRotation:0,autoSkip:true}}
-    }
-  }
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const allocLabelsShort = DATA.months.map(m=>{
+  const [y,mo] = m.split('-');
+  return MONTH_NAMES[parseInt(mo,10)-1] + '-' + y.slice(2);
 });
+const METHOD_CHANGE_INDEX = DATA.months.indexOf('2025-05');
 
-// toggle buttons for stacked chart (choose which cats to view, default: all)
-const allocToggles = document.getElementById('allocToggles');
-let activeCats = new Set(allocCats);
-function renderToggles(){
-  allocToggles.innerHTML='';
-  const allBtn = document.createElement('button');
-  allBtn.textContent = 'All sectors';
-  allBtn.className = activeCats.size===allocCats.length ? 'active':'';
-  allBtn.onclick = ()=>{activeCats = new Set(allocCats); renderToggles(); updateStack();};
-  allocToggles.appendChild(allBtn);
-  allocCats.forEach(cat=>{
-    const b = document.createElement('button');
-    b.textContent = cat;
-    b.className = activeCats.has(cat) && activeCats.size!==allocCats.length ? 'active':'';
-    b.onclick = ()=>{
-      if(activeCats.size===allocCats.length){ activeCats = new Set([cat]); }
-      else if(activeCats.has(cat)){ activeCats.delete(cat); if(activeCats.size===0) activeCats=new Set(allocCats); }
-      else { activeCats.add(cat); }
-      renderToggles(); updateStack();
-    };
-    allocToggles.appendChild(b);
-  });
-}
-renderToggles();
+const ALLOC_GROUPS = {
+  "Government Related": DATA.allocation["Government Related"],
+  "Agency MBS": DATA.allocation["Agency MBS"],
+  "Securitized (non-Agcy)": DATA.allocation["Non-agency MBS"].map((v,i)=> v + DATA.allocation["ABS"][i] + DATA.allocation["CMBS"][i] + DATA.allocation["Non US RMBS"][i]),
+  "Investment Grade Credit": DATA.allocation["IG Credit"],
+  "High Yield": DATA.allocation["High Yield"],
+  "Bank Loan": DATA.allocation["Bank Loan"],
+  "Emerging Markets": DATA.allocation["Emerging Markets"],
+  "Cash & Liquidity": DATA.allocation["Cash"],
+  "Other": DATA.allocation["Other"]
+};
+const ALLOC_COLORS = {
+  "Government Related":"#122c52",
+  "Agency MBS":"#2f6fb3",
+  "Securitized (non-Agcy)":"#8ec6f0",
+  "Investment Grade Credit":"#2f6b3a",
+  "High Yield":"#93cf9e",
+  "Bank Loan":"#b9a13c",
+  "Emerging Markets":"#e08a3c",
+  "Cash & Liquidity":"#97a3ab",
+  "Other":"#8b2020"
+};
+const allocGroupNames = Object.keys(ALLOC_GROUPS);
 
-let allocStackChart;
-function updateStack(){
-  const cats = allocCats.filter(c=>activeCats.has(c));
-  const datasets = cats.map(cat=>({
-    label:cat,
-    data:DATA.allocation[cat],
-    backgroundColor:COLORS[cat],
-    stack:'alloc'
+// dashed vertical marker for the GMV% methodology change, drawn on the canvas directly
+const methodologyLinePlugin = {
+  id:'methodologyLine',
+  afterDraw(chart){
+    if(METHOD_CHANGE_INDEX < 0) return;
+    const {ctx, chartArea, scales} = chart;
+    const x = scales.x.getPixelForValue(METHOD_CHANGE_INDEX);
+    if(x < chartArea.left || x > chartArea.right) return;
+    ctx.save();
+    ctx.setLineDash([4,4]);
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#c0392b';
+    ctx.font = '600 11px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('methodology change', x + 6, chartArea.top + 12);
+    ctx.restore();
+  }
+};
+
+let allocChartInstance;
+let allocMode = 'composition';
+
+function buildAllocDatasets(mode){
+  return allocGroupNames.map(name=>({
+    label:name,
+    data:ALLOC_GROUPS[name],
+    borderColor:ALLOC_COLORS[name],
+    backgroundColor: mode==='composition' ? ALLOC_COLORS[name] : ALLOC_COLORS[name]+'26',
+    tension:.4,
+    borderWidth:2,
+    pointRadius:0,
+    pointHoverRadius:4,
+    pointHitRadius:8,
+    fill: mode==='composition' ? true : false
   }));
-  if(allocStackChart){
-    allocStackChart.data.datasets = datasets;
-    allocStackChart.update();
-  } else {
-    allocStackChart = new Chart(document.getElementById('allocStackChart'),{
-      type:'bar',
-      data:{labels:DATA.labels, datasets},
-      options:{
-        responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10}}},
-          title:{display:true,text:'Full sector composition by month (% GMV)',font:{size:12},color:'#64748b'}},
-        scales:{
-          x:{stacked:true,ticks:{maxRotation:0}},
-          y:{stacked:true,suggestedMax:100,title:{display:true,text:'% of GMV'}}
+}
+
+function renderAllocChart(){
+  const ctx = document.getElementById('allocChart');
+  const datasets = buildAllocDatasets(allocMode);
+  const config = {
+    type:'line',
+    data:{ labels:allocLabelsShort, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{
+          backgroundColor:'rgba(15,23,42,.94)',
+          titleColor:'#fff', bodyColor:'#e2e8f0',
+          padding:10, cornerRadius:8, boxPadding:4, usePointStyle:true,
+          callbacks:{ label: c => `${c.dataset.label}: ${c.parsed.y}%` }
+        }
+      },
+      scales:{
+        x:{ stacked: allocMode==='composition', ticks:{ maxRotation:0, autoSkip:true } },
+        y:{
+          stacked: allocMode==='composition',
+          min:0,
+          max: allocMode==='composition' ? 110 : 40,
+          ticks:{ stepSize: allocMode==='composition'?10:5, callback:v=>v+'%' },
+          title:{ display:true, text:'% of Fund' }
         }
       }
-    });
-  }
+    },
+    plugins:[methodologyLinePlugin]
+  };
+  if(allocChartInstance) allocChartInstance.destroy();
+  allocChartInstance = new Chart(ctx, config);
 }
-updateStack();
+renderAllocChart();
+
+document.querySelectorAll('#allocModeToggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#allocModeToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    allocMode = btn.dataset.mode;
+    renderAllocChart();
+  });
+});
+
+(function buildAllocLegend(){
+  const el = document.getElementById('allocLegend');
+  el.innerHTML = allocGroupNames.map(name=>
+    `<span class="item"><span class="swatch" style="background:${ALLOC_COLORS[name]}"></span>${name}</span>`
+  ).join('');
+})();
+
+document.getElementById('allocTableToggle').addEventListener('click', function(){
+  const wrap = document.getElementById('allocTableWrap');
+  const nowCollapsed = wrap.classList.toggle('collapsed');
+  const isOpen = !nowCollapsed;
+  this.classList.toggle('open', isOpen);
+  this.innerHTML = `<span class="arrow">&#9654;</span> ${isOpen ? 'Hide data table' : 'Show data table'}`;
+});
 
 // Allocation table
 (function buildAllocTable(){
   const tbl = document.getElementById('allocTable');
-  let thead = '<thead><tr><th>Sector</th>' + DATA.labels.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
+  let thead = '<thead><tr><th>Sector</th>' + allocLabelsShort.map(l=>`<th>${l}</th>`).join('') + '</tr></thead>';
   let tbody = '<tbody>';
-  allocCats.forEach(cat=>{
-    tbody += `<tr><td>${cat}</td>` + DATA.allocation[cat].map(v=>`<td>${v}%</td>`).join('') + '</tr>';
+  allocGroupNames.forEach(name=>{
+    tbody += `<tr><td>${name}</td>` + ALLOC_GROUPS[name].map(v=>`<td>${v}%</td>`).join('') + '</tr>';
   });
   tbody += '</tbody>';
   tbl.innerHTML = thead+tbody;
